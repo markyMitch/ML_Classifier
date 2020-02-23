@@ -5,82 +5,133 @@ import sklearn.metrics
 import sklearn.preprocessing
 import sklearn.metrics
 import datetime
-from typing import Union
+import numpy
+from typing import Union, Tuple
 
-data = pandas.read_excel('/data/breast-cancer.xls')
-print('test')
-print(data)
+class DataSet(object):  # data transfer object
 
-def prep_data(data):
+    def __init__(self, x_train, x_test, y_train, y_test):
+        self.x_train = x_train
+        self.x_test = x_test
+        self.y_train = y_train
+        self.y_test = y_test
 
-    # TODO need to change range columns to use mean value and change category columns to use one-hot encoding
-    print(type(data))
-    clean_range_data(data, 'age')
-    clean_range_data(data, 'tumor-size')
-    clean_range_data(data, 'inv-nodes')
-    data = pandas.get_dummies(data, columns=["menopause", "node-caps", "breast", "breast-quad", "irradiat"],
-                       prefix=["menopause", "node-caps", "breast", "breast-quad", "irradiat"])
-    print(data.head())
+class ClassifiedData(object):  # another data transfer object
 
-    # encode the labels we are trying to classify
-    label_encoder = sklearn.preprocessing.LabelEncoder()
-    data['Class'] = label_encoder.fit_transform(data['Class'])
+    def __init__(self, predictions: numpy.ndarray, true_values) -> None:
+        self.predictions = predictions
+        self.true_values = true_values
 
-    X = data.drop('Class', axis=1)
-    y = data['Class']
+class DataParser(object):
 
-    X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y)
+    def __init__(self):
+        self.dataframe = None
 
-    mlp = sklearn.neural_network.MLPClassifier(hidden_layer_sizes=(20,20,20),max_iter=500)
+    def load_data(self, filename: str):
+        raise NotImplementedError
 
-    mlp.fit(X_train, y_train)
+    def clean_data(self):
+        raise NotImplementedError
 
-    predictions = mlp.predict(X_test)
-    print(predictions)
+    def split_data(self, y_column_name: str) -> DataSet:
+        x = self.dataframe.drop(y_column_name, axis=1)
+        y = self.dataframe[y_column_name]
 
-    # check accuracy
-    print(sklearn.metrics.confusion_matrix(y_test, predictions))
-    print(sklearn.metrics.classification_report(y_test, predictions))
+        x_train, x_test, y_train, y_test = sklearn.model_selection.train_test_split(x, y)
+        return DataSet(x_train, x_test, y_train, y_test)
 
-def clean_range_data(data: pandas.core.frame.DataFrame, column_name: str) -> None:
-    labels = {}
 
-    # run initial loop to correct any data in date format
+class ExcelDataParser(DataParser):
 
-    data[column_name] = data[column_name].apply(clean_column_item_formatting)
+    def __int__(self):
+        super(ExcelDataParser, self).__init__()
 
-    for value in data[column_name]:
-        if value not in labels:
-            labels[value] = replace_range_with_num(value)
-    replacement_data = {column_name: labels}
-    data.replace(replacement_data, inplace=True)
+    def load_data(self, filename: str) -> None:
+        self.dataframe = pandas.read_excel(filename)
 
-def clean_column_item_formatting(value: Union[int, datetime.datetime]) -> str:
-    if type(value) is datetime.datetime:
-        return correct_format_error(value)
-    else:
-        return value
+    def clean_data(self):
+        columns_with_ranged_data = ['age', 'tumor-size', 'inv-nodes']
+        for column in columns_with_ranged_data:
+            self.clean_range_data(column)
 
-def correct_format_error(value: datetime.datetime) -> str:
-    d = value.day
-    m = value.month
-    y = value.year
-    if d == 1:
-        return f"{m}-{shorten_year(y)}"
-    else:
-        return f"{d}-{m}"
+        columns_to_encode = ["menopause", "node-caps", "breast", "breast-quad", "irradiat"]
+        self.dataframe = pandas.get_dummies(self.dataframe, columns=columns_to_encode, prefix=columns_to_encode)
+        # encode the labels we are trying to classify
+        label_encoder = sklearn.preprocessing.LabelEncoder()
+        self.dataframe['Class'] = label_encoder.fit_transform(self.dataframe['Class'])
 
-def shorten_year(year: int) -> int:
-    string_year = str(year)
-    if len(string_year) == 4:
-        if string_year[0:2] == "20":
-            return int(string_year[2:])
-    return year
+    def clean_range_data(self, column_name: str) -> None:
 
-def replace_range_with_num(range_string: str) -> float:
-    range_parts = range_string.split('-')
-    difference = int(range_parts[1]) - int(range_parts[0])
-    return int(range_parts[0]) + (difference / 2)
+        self.dataframe[column_name] = self.dataframe[column_name].apply(self.clean_column_item_formatting)
+
+        self.dataframe[column_name] = self.dataframe[column_name].apply(self.replace_range_with_num)
+
+    def clean_column_item_formatting(self, value: Union[str, datetime.datetime]) -> str:
+        if type(value) is datetime.datetime:
+            return self.correct_format_error(value)
+        else:
+            return value
+
+    def correct_format_error(self, value: datetime.datetime) -> str:
+        d = value.day
+        m = value.month
+        y = value.year
+        if d == 1:
+            return f"{m}-{self.shorten_year(y)}"
+        else:
+            return f"{d}-{m}"
+
+    def shorten_year(self, year: int) -> int:
+        string_year = str(year)
+        if len(string_year) == 4:
+            if string_year[0:2] == "20":
+                return int(string_year[2:])
+        return year
+
+    def replace_range_with_num(self, range_string: str) -> float:
+        range_parts = range_string.split('-')
+        difference = int(range_parts[1]) - int(range_parts[0])
+        return int(range_parts[0]) + (difference / 2)
+
+
+class NeuralNet(object):
+
+    def __init__(self):
+        self.layer_sizes = None
+        self.max_iter = None
+        self.activation = None
+        self.algorithm = None
+
+    def classify_data(self, dataset: DataSet) -> ClassifiedData:
+        mlp = sklearn.neural_network.MLPClassifier(hidden_layer_sizes=self.layer_sizes, max_iter=self.max_iter)
+        mlp.fit(dataset.x_train, dataset.y_train)
+        predictions = mlp.predict(dataset.x_test)
+        return ClassifiedData(predictions, dataset.y_test)
+
+
+class ClassifiedDataAnalyser(object):
+
+    def __init__(self, classified_data: ClassifiedData) -> None:
+        self.classified_data = classified_data
+
+    def print_info(self):
+        print(sklearn.metrics.confusion_matrix(self.classified_data.true_values, self.classified_data.predictions))
+        print(sklearn.metrics.classification_report(self.classified_data.true_values, self.classified_data.predictions))
+
 
 if __name__ == '__main__':
-    prep_data(data)
+    # setup
+    parser = ExcelDataParser()
+    parser.load_data('/data/breast-cancer.xls')
+    parser.clean_data()
+    dataset = parser.split_data("Class")
+
+    neural_net = NeuralNet()
+    neural_net.layer_sizes = (20,20,20, 20, 20)
+    neural_net.max_iter = 100000
+    classified_data = neural_net.classify_data(dataset)
+
+    analyser = ClassifiedDataAnalyser(classified_data)
+    analyser.print_info()
+
+
