@@ -6,7 +6,7 @@ import sklearn.preprocessing
 import sklearn.metrics
 import datetime
 import numpy
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 
 class DataSet(object):  # data transfer object
 
@@ -21,6 +21,12 @@ class ClassifiedData(object):  # another data transfer object
     def __init__(self, predictions: numpy.ndarray, true_values) -> None:
         self.predictions = predictions
         self.true_values = true_values
+
+class NeuralNetConfiguration(object):
+
+    def __init__(self, average: float, layers: Tuple[int]) -> None:
+        self.average = average
+        self.layers = layers
 
 class DataParser(object):
 
@@ -111,27 +117,85 @@ class NeuralNet(object):
 
 class ClassifiedDataAnalyser(object):
 
-    def __init__(self, classified_data: ClassifiedData) -> None:
-        self.classified_data = classified_data
+    def __init__(self):
+        self.iterations_analysed = 0
+        self.running_average = 0
+        self.best_config = None
 
-    def print_info(self):
-        print(sklearn.metrics.confusion_matrix(self.classified_data.true_values, self.classified_data.predictions))
-        print(sklearn.metrics.classification_report(self.classified_data.true_values, self.classified_data.predictions))
+    def analyse_data(self, classified_data: ClassifiedData):
+        average = sklearn.metrics.accuracy_score(classified_data.true_values, classified_data.predictions)
+        self.iterations_analysed = self.iterations_analysed + 1
+        self.running_average = self.running_average + average
 
+    def print_info(self, classified_data):
+        print(sklearn.metrics.confusion_matrix(classified_data.true_values, classified_data.predictions))
+        print(sklearn.metrics.classification_report(classified_data.true_values, classified_data.predictions))
+
+    def get_average(self):
+        return self.running_average / self.iterations_analysed
+
+    def print_average(self):
+        print(self.get_average())
+
+    def reset_average(self):
+        self.running_average = 0
+        self.iterations_analysed = 0
+
+    def log_config(self, neural_net_layers: Tuple[int]):
+        try:
+            with open('/data/config_log.txt', 'a') as log:
+                log.write(f"{neural_net_layers} {self.get_average()}")
+        except OSError as e:
+            print(e)
+
+    def save_config(self, neural_net_layers: Tuple[int]):
+        if self.best_config is None or self.get_average() > self.best_config.average:
+            self.best_config = NeuralNetConfiguration(self.get_average(), neural_net_layers)
 
 if __name__ == '__main__':
     # setup
     parser = ExcelDataParser()
     parser.load_data('/data/breast-cancer.xls')
     parser.clean_data()
-    dataset = parser.split_data("Class")
 
+    analyser = ClassifiedDataAnalyser()
+
+    # TODO outer loop here with different neural net setups
     neural_net = NeuralNet()
-    neural_net.layer_sizes = (20,20,20, 20, 20)
     neural_net.max_iter = 100000
-    classified_data = neural_net.classify_data(dataset)
 
-    analyser = ClassifiedDataAnalyser(classified_data)
-    analyser.print_info()
+    for layer_size in range(1,100):
+        neural_net.layer_sizes = (layer_size,)
+        for i in range(100):  # run a bunch of times with randomised test/train partition to get accurate average
+            dataset = parser.split_data("Class")
+            classified_data = neural_net.classify_data(dataset)
+            analyser.analyse_data(classified_data)
+        print(neural_net.layer_sizes)
+        analyser.print_average()
+        analyser.log_config((layer_size,))
+        analyser.save_config((layer_size,))
+        analyser.reset_average()
+
+    for layer_one_size in range(1,100):
+        for layer_two_size in range(1,100):
+            neural_net.layer_sizes = (layer_one_size, layer_two_size)
+            for i in range(100):
+                dataset = parser.split_data("Class")
+                classified_data = neural_net.classify_data(dataset)
+                analyser.analyse_data(classified_data)
+            print(neural_net.layer_sizes)
+            analyser.print_average()
+            analyser.log_config((layer_one_size, layer_two_size))
+            analyser.save_config((layer_one_size, layer_two_size))
+            analyser.reset_average()
+
+
+
+    for i in range(100):  # run a bunch of times with randomised test/train partition to get accurate average
+        dataset = parser.split_data("Class")
+        classified_data = neural_net.classify_data(dataset)
+        analyser.analyse_data(classified_data)
+
+
 
 
