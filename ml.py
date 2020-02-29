@@ -9,6 +9,8 @@ import numpy
 import itertools
 from typing import Union, Tuple, List
 
+from google.colab import files
+
 """
 To see the main script that runs the testing of different neural network configurations, head to
 TestRig.master_test_script around line 258. This approach was designed to be modular and extendable, separating data
@@ -188,6 +190,7 @@ class ClassifiedDataAnalyser(object):
         self.log_file = filename
 
     def log_config(self, message: str) -> None:
+        print(message)
         try:
             with open(self.log_file, 'a') as log:
                 log.write(f"{message}\n")
@@ -204,7 +207,7 @@ class TestRig(object):
     """
     data_source = None
     STANDARD_ITERATIONS = 100
-    DEFAULT_LOG = '/data/config_log.txt'
+    DEFAULT_LOG = 'config_log.txt'
 
     def __init__(self, parser: ExcelDataParser, neural_net: NeuralNet, analyser: ClassifiedDataAnalyser):
         self.parser = parser
@@ -276,12 +279,16 @@ class TestRig(object):
 
 if __name__ == '__main__':
     # setup
+
+    uploaded = files.upload()
+
     parser = ExcelDataParser()
     neural_net = NeuralNet()
     analyser = ClassifiedDataAnalyser()
 
     # run master test script on test rig for provided data
     test_rig = TestRig(parser, neural_net, analyser)
-    test_rig.set_data_source("/data/breast-cancer.xls")
+    test_rig.set_data_source("breast-cancer.xls")
     best_config = test_rig.master_test_script()
     print(best_config)
+    files.download('config-log.txt')
